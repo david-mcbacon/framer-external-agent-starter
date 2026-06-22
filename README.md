@@ -5,4 +5,18 @@ This is a starter project for the Framer External Agent.
 ## Getting Started
 
 1. Clone the repository
-2. Replace the `framerProjectLink` in the `config.jsonc` file with the link to your Framer project.
+2. Ask your agent to connect to Framer — it will ask you for your project link if `.env` is not set up yet
+3. In Framer, open your project and copy the URL from your browser. It looks like:
+
+   `https://framer.com/projects/Your-Project-Name--abc123XYZ-3ZTNf`
+
+4. Paste that link to your agent. It will save it to `.env` and connect.
+
+You can also set it up manually:
+
+```bash
+cp .env.example .env
+# Edit .env and set FRAMER_PROJECT_LINK to your Framer project URL
+npx @framer/agent@latest setup
+node scripts/connect-framer.js
+```
