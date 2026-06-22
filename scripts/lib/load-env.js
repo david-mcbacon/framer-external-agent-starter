@@ -1,4 +1,4 @@
-const { readFileSync, existsSync } = require("fs");
+const { readFileSync, writeFileSync, existsSync } = require("fs");
 
 const FRAMER_PROJECT_LINK_KEY = "FRAMER_PROJECT_LINK";
 
@@ -56,8 +56,44 @@ function getFramerProjectLink(env) {
   return value;
 }
 
+function setFramerProjectLink(filePath, link) {
+  const line = `${FRAMER_PROJECT_LINK_KEY}=${link}`;
+
+  if (!existsSync(filePath)) {
+    writeFileSync(filePath, `${line}\n`, "utf8");
+    return;
+  }
+
+  const content = readFileSync(filePath, "utf8");
+  const lines = content.split("\n");
+  let replaced = false;
+
+  const updated = lines.map((entry) => {
+    const trimmed = entry.trim();
+
+    if (
+      !trimmed.startsWith("#") &&
+      trimmed.startsWith(`${FRAMER_PROJECT_LINK_KEY}=`)
+    ) {
+      replaced = true;
+      return line;
+    }
+
+    return entry;
+  });
+
+  if (!replaced) {
+    const suffix = content.endsWith("\n") ? "" : "\n";
+    writeFileSync(filePath, `${content}${suffix}${line}\n`, "utf8");
+    return;
+  }
+
+  writeFileSync(filePath, updated.join("\n"), "utf8");
+}
+
 module.exports = {
   FRAMER_PROJECT_LINK_KEY,
   getFramerProjectLink,
   loadEnv,
+  setFramerProjectLink,
 };

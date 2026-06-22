@@ -14,10 +14,12 @@ const { writeFileSync, mkdirSync, existsSync } = require("fs");
 const { spawnSync } = require("child_process");
 const { resolve, dirname, join } = require("path");
 const { homedir } = require("os");
+const readline = require("readline");
 const {
   FRAMER_PROJECT_LINK_KEY,
   getFramerProjectLink,
   loadEnv,
+  setFramerProjectLink,
 } = require("./lib/load-env");
 
 const ROOT = resolve(dirname(__filename), "..");
@@ -80,31 +82,26 @@ function runFramer(args, { stdio = "pipe" } = {}) {
  * Example:
  *   https://framer.com/projects/My-Site--abc123XYZ-3ZTNf -> abc123XYZ
  */
-function parseProjectLink(link) {
+function validateProjectLink(link) {
   const trimmed = link.trim();
 
   if (!trimmed) {
-    fail(
-      "MISSING_FRAMER_PROJECT_LINK",
-      "FRAMER_PROJECT_LINK in .env is empty.",
-    );
+    return { ok: false, error: "URL cannot be empty." };
   }
 
   if (/^[A-Za-z0-9]+$/.test(trimmed)) {
-    fail(
-      "INVALID_FRAMER_PROJECT_LINK",
-      "FRAMER_PROJECT_LINK must be a full Framer project URL from the browser, not a project ID.",
-    );
+    return {
+      ok: false,
+      error:
+        "Use a full Framer project URL from the browser, not a project ID.",
+    };
   }
 
   let url;
   try {
     url = new URL(trimmed);
   } catch {
-    fail(
-      "INVALID_FRAMER_PROJECT_LINK",
-      `FRAMER_PROJECT_LINK is not a valid URL: ${trimmed}`,
-    );
+    return { ok: false, error: `Not a valid URL: ${trimmed}` };
   }
 
   const match = url.pathname.match(
@@ -112,17 +109,170 @@ function parseProjectLink(link) {
   );
 
   if (!match) {
-    fail(
-      "INVALID_FRAMER_PROJECT_LINK",
-      `FRAMER_PROJECT_LINK does not look like a Framer project URL: ${trimmed}`,
-    );
+    return {
+      ok: false,
+      error: `Does not look like a Framer project URL: ${trimmed}`,
+    };
   }
 
-  return { projectId: match[1], projectUrlOrId: trimmed };
+  return {
+    ok: true,
+    projectId: match[1],
+    projectUrlOrId: trimmed,
+  };
 }
 
-function readProjectLink() {
+function parseProjectLink(link) {
+  const result = validateProjectLink(link);
+
+  if (!result.ok) {
+    fail("INVALID_FRAMER_PROJECT_LINK", result.error);
+  }
+
+  return {
+    projectId: result.projectId,
+    projectUrlOrId: result.projectUrlOrId,
+  };
+}
+
+function isInteractiveTerminal() {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+function printCliHelp() {
+  console.log(`Usage: node scripts/connect-framer.js [options] [project-url]
+
+Connect this repo to a Framer project.
+
+Options:
+  --link, -l <url>       Framer project URL
+  --project-link <url>   Same as --link
+  --help, -h             Show this help
+
+If no URL is passed and .env is missing FRAMER_PROJECT_LINK, an interactive
+terminal prompts for the URL. Non-interactive runs (for example agents) still
+fail with instructions to ask the user.
+
+Examples:
+  npm run framer-connect
+  npm run framer-connect -- --link https://framer.com/projects/My-Site--abc123XYZ-3ZTNf
+  node scripts/connect-framer.js https://framer.com/projects/My-Site--abc123XYZ-3ZTNf`);
+}
+
+function parseCliArgs(argv) {
+  const args = argv.slice(2);
+  let link = null;
+  let help = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--help" || arg === "-h") {
+      help = true;
+      continue;
+    }
+
+    if (arg === "--link" || arg === "-l" || arg === "--project-link") {
+      link = args[index + 1];
+
+      if (!link || link.startsWith("-")) {
+        console.error(`Missing value for ${arg}`);
+        process.exit(1);
+      }
+
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("-")) {
+      console.error(`Unknown option: ${arg}`);
+      process.exit(1);
+    }
+
+    if (!link) {
+      link = arg;
+    }
+  }
+
+  return { link, help };
+}
+
+function promptForProjectLink() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const question = (text) =>
+    new Promise((resolveQuestion) => {
+      rl.question(text, resolveQuestion);
+    });
+
+  console.log("\nI need your Framer project link before I can connect.\n");
+  console.log(
+    "In Framer, open your project and copy the URL from your browser. It looks like:",
+  );
+  console.log(
+    "https://framer.com/projects/Your-Project-Name--abc123XYZ-3ZTNf\n",
+  );
+
+  return new Promise((resolvePrompt) => {
+    const ask = async () => {
+      const answer = (await question("Framer project URL: ")).trim();
+
+      if (!answer) {
+        console.log("Please enter a URL.\n");
+        ask();
+        return;
+      }
+
+      const result = validateProjectLink(answer);
+
+      if (!result.ok) {
+        console.log(`\n${result.error}\n`);
+        ask();
+        return;
+      }
+
+      rl.close();
+      resolvePrompt(result.projectUrlOrId);
+    };
+
+    ask();
+  });
+}
+
+async function resolveProjectLink() {
+  const { link: cliLink, help } = parseCliArgs(process.argv);
+
+  if (help) {
+    printCliHelp();
+    process.exit(0);
+  }
+
+  if (cliLink) {
+    const validated = validateProjectLink(cliLink);
+
+    if (!validated.ok) {
+      fail("INVALID_FRAMER_PROJECT_LINK", validated.error);
+    }
+
+    setFramerProjectLink(ENV_PATH, validated.projectUrlOrId);
+    return validated.projectUrlOrId;
+  }
+
   const env = loadEnv(ENV_PATH);
+  const envLink = getFramerProjectLink(env);
+
+  if (envLink) {
+    return envLink;
+  }
+
+  if (isInteractiveTerminal()) {
+    const promptedLink = await promptForProjectLink();
+    setFramerProjectLink(ENV_PATH, promptedLink);
+    return promptedLink;
+  }
 
   if (!env) {
     fail(
@@ -131,16 +281,10 @@ function readProjectLink() {
     );
   }
 
-  const projectLink = getFramerProjectLink(env);
-
-  if (!projectLink) {
-    fail(
-      "MISSING_FRAMER_PROJECT_LINK",
-      "Missing FRAMER_PROJECT_LINK in .env. Ask the user for their Framer project URL, then set FRAMER_PROJECT_LINK in .env.",
-    );
-  }
-
-  return projectLink;
+  fail(
+    "MISSING_FRAMER_PROJECT_LINK",
+    "Missing FRAMER_PROJECT_LINK in .env. Ask the user for their Framer project URL, then set FRAMER_PROJECT_LINK in .env.",
+  );
 }
 
 function listActiveSessions() {
@@ -296,8 +440,8 @@ function resolveSession({ projectId, projectUrlOrId }) {
   };
 }
 
-function main() {
-  const projectLink = readProjectLink();
+async function main() {
+  const projectLink = await resolveProjectLink();
   const { projectId, projectUrlOrId } = parseProjectLink(projectLink);
 
   const {
@@ -344,9 +488,7 @@ function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   logNotConnected();
   const message = error instanceof Error ? error.message : String(error);
   console.error(
@@ -357,4 +499,4 @@ try {
     ),
   );
   process.exit(1);
-}
+});
