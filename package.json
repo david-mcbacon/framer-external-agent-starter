@@ -1,0 +1,14 @@
+{
+  "name": "framer-external-agent-starter",
+  "version": "1.0.0",
+  "description": "This is a starter project for the Framer External Agent.",
+  "license": "MIT",
+  "author": "David McBacon",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "framer-connect": "node scripts/connect-framer.js",
+    "framer-list-sessions": "npx @framer/agent@latest session list"
+  }
+}

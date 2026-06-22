@@ -2,7 +2,12 @@
 
 /**
  * Ensures a Framer agent session is connected to the project in `.env`.
- * Reuses an existing session only when its projectId matches — never a random session.
+ *
+ * Flow:
+ * 1. Read FRAMER_PROJECT_LINK from .env and parse the expected projectId
+ * 2. List active sessions and look for one with a matching projectId
+ * 3. If a match exists and verifies, reuse it — already connected
+ * 4. Otherwise create a new session for the project link
  */
 
 const { writeFileSync, mkdirSync, existsSync } = require("fs");
@@ -18,15 +23,36 @@ const {
 const ROOT = resolve(dirname(__filename), "..");
 const ENV_PATH = join(ROOT, ".env");
 const SESSION_STATE_PATH = join(ROOT, ".framer", "session.json");
-const VERIFY_SCRIPT_PATH = join(ROOT, "scripts", "verify-framer-session.exec.js");
+const VERIFY_SCRIPT_PATH = join(
+  ROOT,
+  "scripts",
+  "verify-framer-session.exec.js",
+);
 const FRAMER_CLI = "npx";
 const FRAMER_ARGS_PREFIX = ["@framer/agent@latest"];
 
 const AGENT_ACTION_ASK_USER =
-  "Stop. Ask the user for their Framer project URL. Do not guess, infer, or look it up from sessions, terminal history, skills, or other files. Wait for the user reply, write FRAMER_PROJECT_LINK to .env, then run this script again.";
+  "Read docs/framer-connection.md and follow it. Stop. Ask the user for their Framer project URL. Do not guess, infer, or look it up from sessions, terminal history, skills, or other files. Wait for the user reply, write FRAMER_PROJECT_LINK to .env, then run this script again.";
+
+const green = (text) => `\x1b[32m${text}\x1b[0m`;
+const red = (text) => `\x1b[31m${text}\x1b[0m`;
+
+function logConnected(projectId) {
+  console.log(green(`✅ Connected to project ${projectId}`));
+}
+
+function logNotConnected() {
+  console.error(red("❌ Project not connected"));
+}
 
 function fail(code, error) {
-  const payload = { ok: false, code, error, agentAction: AGENT_ACTION_ASK_USER };
+  logNotConnected();
+  const payload = {
+    ok: false,
+    code,
+    error,
+    agentAction: AGENT_ACTION_ASK_USER,
+  };
   console.error(JSON.stringify(payload, null, 2));
   process.exit(1);
 }
@@ -117,7 +143,7 @@ function readProjectLink() {
   return projectLink;
 }
 
-function listSessions() {
+function listActiveSessions() {
   const { stdout, stderr, status } = runFramer(["session", "list"]);
 
   if (status !== 0) {
@@ -131,6 +157,10 @@ function listSessions() {
   return JSON.parse(stdout);
 }
 
+function findSessionForProjectId(sessions, projectId) {
+  return sessions.find((session) => session.projectId === projectId) ?? null;
+}
+
 function createSession(projectUrlOrId) {
   const { stdout, stderr, status } = runFramer(
     ["session", "new", projectUrlOrId],
@@ -139,7 +169,9 @@ function createSession(projectUrlOrId) {
 
   if (status !== 0) {
     throw new Error(
-      stderr || stdout || "Failed to create Framer session. Authorize in the browser if prompted.",
+      stderr ||
+        stdout ||
+        "Failed to create Framer session. Authorize in the browser if prompted.",
     );
   }
 
@@ -150,10 +182,6 @@ function createSession(projectUrlOrId) {
   }
 
   return sessionId;
-}
-
-function findSessionForProject(sessions, projectId) {
-  return sessions.find((session) => session.projectId === projectId) ?? null;
 }
 
 function verifySession(sessionId) {
@@ -190,8 +218,17 @@ function verifySession(sessionId) {
   }
 }
 
-function assertSessionProject(sessionId, expectedProjectId) {
-  const session = findSessionForProject(listSessions(), expectedProjectId);
+function isSessionVerified(sessionId) {
+  try {
+    verifySession(sessionId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function assertSessionMatchesProject(sessions, sessionId, expectedProjectId) {
+  const session = findSessionForProjectId(sessions, expectedProjectId);
 
   if (!session || session.id !== sessionId) {
     throw new Error(
@@ -207,44 +244,83 @@ function getProjectSkillInfo(projectId) {
     join(homedir(), ".claude", "skills", skill, "SKILL.md"),
   ];
 
-  const skillPath = candidates.find((path) => existsSync(path)) ?? candidates[0];
+  const skillPath =
+    candidates.find((path) => existsSync(path)) ?? candidates[0];
 
   return { skill, skillPath };
 }
 
 function writeSessionState(state) {
   mkdirSync(dirname(SESSION_STATE_PATH), { recursive: true });
-  writeFileSync(SESSION_STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  writeFileSync(
+    SESSION_STATE_PATH,
+    `${JSON.stringify(state, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+/**
+ * Resolve the session for the configured project.
+ * Always checks active sessions first; only creates a new session when needed.
+ */
+function resolveSession({ projectId, projectUrlOrId }) {
+  const activeSessions = listActiveSessions();
+  const matchingSession = findSessionForProjectId(activeSessions, projectId);
+
+  if (matchingSession) {
+    const sessionId = matchingSession.id;
+
+    if (isSessionVerified(sessionId)) {
+      return {
+        sessionId,
+        connectionStatus: "existing",
+        reusedExistingSession: true,
+        activeSessionsChecked: activeSessions.length,
+        matchedByProjectId: true,
+      };
+    }
+  }
+
+  const sessionId = createSession(projectUrlOrId);
+  verifySession(sessionId);
+
+  const sessionsAfterCreate = listActiveSessions();
+  assertSessionMatchesProject(sessionsAfterCreate, sessionId, projectId);
+
+  return {
+    sessionId,
+    connectionStatus: "created",
+    reusedExistingSession: false,
+    activeSessionsChecked: activeSessions.length,
+    matchedByProjectId: false,
+  };
 }
 
 function main() {
   const projectLink = readProjectLink();
   const { projectId, projectUrlOrId } = parseProjectLink(projectLink);
-  const sessions = listSessions();
-  const existing = findSessionForProject(sessions, projectId);
 
-  let sessionId;
-  let reusedExistingSession = false;
-
-  if (existing) {
-    sessionId = existing.id;
-    reusedExistingSession = true;
-  } else {
-    sessionId = createSession(projectUrlOrId);
-  }
-
-  assertSessionProject(sessionId, projectId);
-  verifySession(sessionId);
+  const {
+    sessionId,
+    connectionStatus,
+    reusedExistingSession,
+    activeSessionsChecked,
+    matchedByProjectId,
+  } = resolveSession({ projectId, projectUrlOrId });
 
   const { skill, skillPath } = getProjectSkillInfo(projectId);
 
   const result = {
     ok: true,
+    connected: true,
+    connectionStatus,
+    reusedExistingSession,
+    matchedByProjectId,
+    activeSessionsChecked,
     sessionId,
     projectId,
     projectLink: projectUrlOrId,
     projectEnvKey: FRAMER_PROJECT_LINK_KEY,
-    reusedExistingSession,
     verified: true,
     skill,
     skillPath,
@@ -256,18 +332,22 @@ function main() {
     projectId,
     projectLink: projectUrlOrId,
     projectEnvKey: FRAMER_PROJECT_LINK_KEY,
+    connectionStatus,
     skill,
     skillPath,
     verifiedAt: new Date().toISOString(),
     reusedExistingSession,
+    matchedByProjectId,
   });
 
+  logConnected(projectId);
   console.log(JSON.stringify(result, null, 2));
 }
 
 try {
   main();
 } catch (error) {
+  logNotConnected();
   const message = error instanceof Error ? error.message : String(error);
   console.error(
     JSON.stringify(

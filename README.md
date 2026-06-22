@@ -5,7 +5,7 @@ This is a starter project for the Framer External Agent.
 ## Getting Started
 
 1. Clone the repository
-2. Ask your agent to connect to Framer — it will ask you for your project link if `.env` is not set up yet
+2. Ask your agent to connect to Framer — if `.env` is not set up, it will follow `docs/framer-connection.md` and ask for your project link
 3. In Framer, open your project and copy the URL from your browser. It looks like:
 
    `https://framer.com/projects/Your-Project-Name--abc123XYZ-3ZTNf`
