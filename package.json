@@ -9,9 +9,11 @@
   },
   "scripts": {
     "init": "node scripts/init-framer-project.js",
+    "framer-status": "node scripts/framer-status.js",
     "framer-setup": "node scripts/setup-framer-agent.js",
     "framer-connect": "node scripts/connect-framer.js",
     "framer-list-sessions": "npx @framer/agent@latest session list",
-    "framer-destroy-session": "npx @framer/agent@latest session destroy"
+    "framer-destroy-session": "npx @framer/agent@latest session destroy",
+    "reset-local": "node scripts/reset-local-state.js"
   }
 }
