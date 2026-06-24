@@ -14,6 +14,10 @@ This starter keeps the model simple:
 - less confusion for agents
 - fewer repeated setup tokens
 
+Recommended setup: one local folder per Framer project.
+
+![External AI agents folders setup](https://offload-assets.framercoder.com/8f8f69d5-5895-47be-8b54-a54389f0583a/370516e8-b51c-4cd3-9971-7e32733a7232_external%20agents%20folders%20setup.webp?width=2633&height=2633)
+
 ## Getting Started
 
 This starter separates setup into two layers:
