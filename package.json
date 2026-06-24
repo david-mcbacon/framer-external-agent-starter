@@ -8,7 +8,10 @@
     "doc": "docs"
   },
   "scripts": {
+    "init": "node scripts/init-framer-project.js",
+    "framer-setup": "node scripts/setup-framer-agent.js",
     "framer-connect": "node scripts/connect-framer.js",
-    "framer-list-sessions": "npx @framer/agent@latest session list"
+    "framer-list-sessions": "npx @framer/agent@latest session list",
+    "framer-destroy-session": "npx @framer/agent@latest session destroy"
   }
 }

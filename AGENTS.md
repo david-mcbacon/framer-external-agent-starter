@@ -9,6 +9,11 @@ These instructions apply to every thread in this project.
 
 ## Framer Connection
 
+Before any Framer work, confirm the one-time agent bootstrap exists in `.framer/setup.json`.
+
+- **If `.framer/setup.json` is missing or invalid:** run `npm run framer-setup` once for this folder.
+- **If Node.js is missing or older than v24:** read `docs/framer-agent-setup.md` and follow it exactly before continuing.
+
 Before any Framer work, read `.env` and check that `FRAMER_PROJECT_LINK` is set.
 
 - **If missing or empty:** read `docs/framer-connection.md` and follow it exactly. Stop and ask the user for their project link — do not run Framer CLI commands or guess the link.

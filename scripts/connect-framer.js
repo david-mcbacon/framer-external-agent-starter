@@ -10,7 +10,7 @@
  * 4. Otherwise create a new session for the project link
  */
 
-const { writeFileSync, mkdirSync, existsSync } = require("fs");
+const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("fs");
 const { spawnSync } = require("child_process");
 const { resolve, dirname, join } = require("path");
 const { homedir } = require("os");
@@ -24,6 +24,7 @@ const {
 
 const ROOT = resolve(dirname(__filename), "..");
 const ENV_PATH = join(ROOT, ".env");
+const SETUP_STATE_PATH = join(ROOT, ".framer", "setup.json");
 const SESSION_STATE_PATH = join(ROOT, ".framer", "session.json");
 const VERIFY_SCRIPT_PATH = join(
   ROOT,
@@ -47,16 +48,51 @@ function logNotConnected() {
   console.error(red("❌ Project not connected"));
 }
 
-function fail(code, error) {
+function fail(code, error, extra = {}) {
   logNotConnected();
   const payload = {
     ok: false,
     code,
     error,
     agentAction: AGENT_ACTION_ASK_USER,
+    ...extra,
   };
   console.error(JSON.stringify(payload, null, 2));
   process.exit(1);
+}
+
+function readSetupState() {
+  if (!existsSync(SETUP_STATE_PATH)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(readFileSync(SETUP_STATE_PATH, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function assertAgentSetup() {
+  const state = readSetupState();
+
+  if (
+    state &&
+    state.ok === true &&
+    state.schemaVersion === 1 &&
+    typeof state.completedAt === "string"
+  ) {
+    return;
+  }
+
+  fail(
+    "FRAMER_AGENT_SETUP_REQUIRED",
+    "Framer agent setup has not been completed for this folder. Run `npm run framer-setup` once before connecting a project.",
+    {
+      agentAction:
+        "Run `npm run framer-setup` once for this folder, then rerun `node scripts/connect-framer.js`.",
+    },
+  );
 }
 
 function runFramer(args, { stdio = "pipe" } = {}) {
@@ -441,6 +477,8 @@ function resolveSession({ projectId, projectUrlOrId }) {
 }
 
 async function main() {
+  assertAgentSetup();
+
   const projectLink = await resolveProjectLink();
   const { projectId, projectUrlOrId } = parseProjectLink(projectLink);
 
