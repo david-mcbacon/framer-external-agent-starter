@@ -17,6 +17,5 @@ You can also set it up manually:
 ```bash
 cp .env.example .env
 # Edit .env and set FRAMER_PROJECT_LINK to your Framer project URL
-npx @framer/agent@latest setup
 node scripts/connect-framer.js
 ```

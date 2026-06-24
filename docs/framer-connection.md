@@ -18,8 +18,10 @@ Ask the user (you may shorten slightly, but keep the meaning):
 
 > I need your Framer project link before I can connect.
 >
-> In Framer, open your project and copy the URL from your browser address bar. It looks like:
-> `https://framer.com/projects/Your-Project-Name--abc123XYZ-3ZTNf`
+> - Browser: copy the address bar when the project is open.
+> - App: right-click the project tab, then choose "Copy Project Link".
+>   It looks like:
+>   `https://framer.com/projects/Your-Project-Name--abc123XYZ-3ZTNf`
 >
 > Paste that link here and I will save it to `.env` and connect.
 
@@ -27,7 +29,6 @@ Then **wait for the user's reply**. Do not run any Framer commands until they pr
 
 ### While waiting, you must NOT
 
-- Run `npx @framer/agent@latest setup`
 - Run `node scripts/connect-framer.js`
 - Run `npx @framer/agent@latest session list` or `session new`
 - Run `npx @framer/agent@latest project list`
@@ -49,7 +50,6 @@ Then **wait for the user's reply**. Do not run any Framer commands until they pr
 2. Connect:
 
    ```bash
-   npx @framer/agent@latest setup
    node scripts/connect-framer.js
    ```
 

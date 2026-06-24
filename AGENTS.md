@@ -12,7 +12,7 @@ These instructions apply to every thread in this project.
 Before any Framer work, read `.env` and check that `FRAMER_PROJECT_LINK` is set.
 
 - **If missing or empty:** read `docs/framer-connection.md` and follow it exactly. Stop and ask the user for their project link — do not run Framer CLI commands or guess the link.
-- **If set:** run `npx @framer/agent@latest setup`, then `node scripts/connect-framer.js`. Use `-s <sessionId>` from the output or `.framer/session.json` for all Framer CLI commands, and load the project skill from `.framer/session.json`.
+- **If set:** run `node scripts/connect-framer.js`. Use `-s <sessionId>` from the output or `.framer/session.json` for all Framer CLI commands, and load the project skill from `.framer/session.json`.
 
 ## Scope
 
