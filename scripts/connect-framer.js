@@ -39,6 +39,8 @@ const AGENT_ACTION_ASK_USER =
 
 const green = (text) => `\x1b[32m${text}\x1b[0m`;
 const red = (text) => `\x1b[31m${text}\x1b[0m`;
+const yellow = (text) => `\x1b[33m${text}\x1b[0m`;
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 function logConnected(projectId) {
   console.log(green(`✅ Connected to project ${projectId}`));
@@ -46,6 +48,12 @@ function logConnected(projectId) {
 
 function logNotConnected() {
   console.error(red("❌ Project not connected"));
+}
+
+function logConnecting() {
+  console.log(
+    yellow("Connecting your project to the Framer agent. Please wait..."),
+  );
 }
 
 function fail(code, error, extra = {}) {
@@ -111,6 +119,34 @@ function runFramer(args, { stdio = "pipe" } = {}) {
     stderr: (result.stderr || "").trim(),
     status: result.status ?? 1,
   };
+}
+
+function parseJsonOutput(output, label) {
+  const cleaned = output.replace(ANSI_PATTERN, "").trim();
+
+  if (!cleaned) {
+    throw new Error(`${label} returned empty output.`);
+  }
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const jsonStart = cleaned.search(/[\[{]/);
+
+    if (jsonStart === -1) {
+      throw new Error(`${label} returned non-JSON output: ${cleaned}`);
+    }
+
+    try {
+      return JSON.parse(cleaned.slice(jsonStart));
+    } catch (error) {
+      throw new Error(
+        `${label} returned invalid JSON: ${
+          error instanceof Error ? error.message : String(error)
+        }\nOutput: ${cleaned}`,
+      );
+    }
+  }
 }
 
 /**
@@ -271,6 +307,7 @@ function promptForProjectLink() {
       }
 
       rl.close();
+      logConnecting();
       resolvePrompt(result.projectUrlOrId);
     };
 
@@ -294,6 +331,7 @@ async function resolveProjectLink() {
     }
 
     setFramerProjectLink(ENV_PATH, validated.projectUrlOrId);
+    logConnecting();
     return validated.projectUrlOrId;
   }
 
@@ -330,11 +368,20 @@ function listActiveSessions() {
     throw new Error(stderr || stdout || "Failed to list Framer sessions.");
   }
 
-  if (!stdout || stdout === "No active sessions") {
+  const cleanedStdout = stdout.replace(ANSI_PATTERN, "").trim();
+  const lastLine = cleanedStdout.split(/\r?\n/).pop();
+
+  if (!cleanedStdout || lastLine === "No active sessions") {
     return [];
   }
 
-  return JSON.parse(stdout);
+  const sessions = parseJsonOutput(cleanedStdout, "Framer session list");
+
+  if (!Array.isArray(sessions)) {
+    throw new Error("Framer session list returned an unexpected payload.");
+  }
+
+  return sessions;
 }
 
 function findSessionForProjectId(sessions, projectId) {
@@ -384,7 +431,7 @@ function verifySession(sessionId) {
   }
 
   try {
-    const payload = JSON.parse(stdout);
+    const payload = parseJsonOutput(stdout, `Session ${sessionId} verification`);
     if (!payload.ok) {
       throw new Error("Verification exec returned unexpected payload.");
     }
